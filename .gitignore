@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+.DS_Store
+porto.zip
+porto/
+import_issues_*.csv
+import_summary.txt
