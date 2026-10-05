@@ -5,3 +5,6 @@ porto.zip
 porto/
 import_issues_*.csv
 import_summary.txt
+import_run.log
+query_run.log
+data/*.csv

@@ -1,15 +1,23 @@
+import argparse
 import csv
 import io
 import json
 import math
 from collections import Counter
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median
 from zipfile import ZipFile
 
 
-LIMIT = 0  # Use 0 for all rows, or a smaller number for a quick sample.
+parser = argparse.ArgumentParser(description="Explore the Porto dataset before import.")
+parser.add_argument("--input", default="data/train.csv", help="CSV or ZIP path, relative to this project")
+parser.add_argument("--limit", type=int, default=0, help="Maximum source rows; 0 reads all rows")
+args = parser.parse_args()
+if args.limit < 0:
+    parser.error("--limit must be 0 or greater")
+LIMIT = args.limit
 
 row_count = 0
 trip_ids = set()
@@ -24,45 +32,52 @@ day_types = Counter()
 blank_origin_calls = Counter()
 blank_origin_stands = Counter()
 
-# Read the CSV directly from the ZIP beside this script.
-dataset_path = Path(__file__).resolve().parent / "porto.zip"
+# Resolve paths relative to this script rather than the working directory.
+dataset_path = Path(__file__).resolve().parent / args.input
+if not dataset_path.is_file():
+    parser.error(f"Input file not found: {dataset_path}")
 
-with ZipFile(dataset_path) as archive:
-    with archive.open("porto/porto.csv") as file:
-        reader = csv.DictReader(io.TextIOWrapper(file, encoding="utf-8"))
-        for row in reader:
-            row_count += 1
-            trip_ids.add(row["TRIP_ID"].strip())
-            taxi_ids.add(row["TAXI_ID"].strip())
+with ExitStack() as files:
+    if dataset_path.suffix.lower() == ".zip":
+        archive = files.enter_context(ZipFile(dataset_path))
+        source = files.enter_context(archive.open("porto/porto.csv"))
+        text = files.enter_context(io.TextIOWrapper(source, encoding="utf-8"))
+    else:
+        text = files.enter_context(dataset_path.open(encoding="utf-8", newline=""))
+    reader = csv.DictReader(text)
+    for row in reader:
+        row_count += 1
+        trip_ids.add(row["TRIP_ID"].strip())
+        taxi_ids.add(row["TAXI_ID"].strip())
 
-            timestamp = int(row["TIMESTAMP"])
-            if first_timestamp is None or timestamp < first_timestamp:
-                first_timestamp = timestamp
-            if last_timestamp is None or timestamp > last_timestamp:
-                last_timestamp = timestamp
+        timestamp = int(row["TIMESTAMP"])
+        if first_timestamp is None or timestamp < first_timestamp:
+            first_timestamp = timestamp
+        if last_timestamp is None or timestamp > last_timestamp:
+            last_timestamp = timestamp
 
-            point_count = len(json.loads(row["POLYLINE"]))
-            gps_counts.append(point_count)
-            if point_count == 0:
-                trajectory_sizes["0 points"] += 1
-            elif point_count < 3:
-                trajectory_sizes["1-2 points"] += 1
-            else:
-                trajectory_sizes["3+ points"] += 1
+        point_count = len(json.loads(row["POLYLINE"]))
+        gps_counts.append(point_count)
+        if point_count == 0:
+            trajectory_sizes["0 points"] += 1
+        elif point_count < 3:
+            trajectory_sizes["1-2 points"] += 1
+        else:
+            trajectory_sizes["3+ points"] += 1
 
-            if row["MISSING_DATA"].strip().lower() == "true":
-                missing_data_count += 1
+        if row["MISSING_DATA"].strip().lower() == "true":
+            missing_data_count += 1
 
-            call_type = row["CALL_TYPE"].strip()
-            call_types[call_type] += 1
-            day_types[row["DAY_TYPE"].strip()] += 1
-            if not row["ORIGIN_CALL"].strip():
-                blank_origin_calls[call_type] += 1
-            if not row["ORIGIN_STAND"].strip():
-                blank_origin_stands[call_type] += 1
+        call_type = row["CALL_TYPE"].strip()
+        call_types[call_type] += 1
+        day_types[row.get("DAY_TYPE", row.get("DAYTYPE", "")).strip()] += 1
+        if not row["ORIGIN_CALL"].strip():
+            blank_origin_calls[call_type] += 1
+        if not row["ORIGIN_STAND"].strip():
+            blank_origin_stands[call_type] += 1
 
-            if LIMIT and row_count >= LIMIT:
-                break
+        if LIMIT and row_count >= LIMIT:
+            break
 
 print("\nEDA SUMMARY")
 print(f"Scope: first {LIMIT:,} rows at most" if LIMIT else "Scope: full dataset")

@@ -1,45 +1,31 @@
+import os
+
 import mysql.connector as mysql
 
 
 class DbConnector:
-    """
-    Connects to the local MySQL server running in Docker.
-    Connector needs HOST, DATABASE, USER and PASSWORD to connect,
-    using the Docker port published on the host: 3308.
+    """Connect to local MySQL; MYSQL_* environment variables override defaults."""
 
-    Example:
-    HOST = "127.0.0.1" // Local Docker database host
-    DATABASE = "ex2_db" // Database name, if you just want to connect to MySQL server, leave it empty
-    USER = "jonhbrae" // This is the user you created and added privileges for
-    PASSWORD = "porto_local_only" // The password you set for said user
-    """
-
-    def __init__(self,
-                 HOST="127.0.0.1",
-                 DATABASE="ex2_db",
-                 USER="jonhbrae",
-                 PASSWORD="porto_local_only"):
-        #Connect to the database
+    def __init__(self, HOST=None, DATABASE=None, USER=None, PASSWORD=None, PORT=None):
+        host = HOST if HOST is not None else os.getenv("MYSQL_HOST", "127.0.0.1")
+        database = DATABASE if DATABASE is not None else os.getenv("MYSQL_DATABASE", "ex2_db")
+        user = USER if USER is not None else os.getenv("MYSQL_USER", "jonhbrae")
+        password = PASSWORD if PASSWORD is not None else os.getenv("MYSQL_PASSWORD", "porto_local_only")
+        port = int(PORT if PORT is not None else os.getenv("MYSQL_PORT", "3308"))
         try:
-            self.db_connection = mysql.connect(host=HOST, database=DATABASE, user=USER, password=PASSWORD, port=3308)
-        except Exception as e:
-            print("ERROR: Failed to connect to db:", e)
-
-        # et the db cursor
+            self.db_connection = mysql.connect(
+                host=host, database=database, user=user, password=password,
+                port=port, connection_timeout=10,
+            )
+        except mysql.Error as error:
+            raise RuntimeError(
+                f"Cannot connect to MySQL at {host}:{port}, database {database}. "
+                "Start it with ./local_db.ps1 up and check your MYSQL_* settings."
+            ) from error
         self.cursor = self.db_connection.cursor()
-
-        print("Connected to:", self.db_connection.get_server_info())
-        #get database information
-        self.cursor.execute("select database();")
-        database_name = self.cursor.fetchone()
-        print("You are connected to the database:", database_name)
-        print("-----------------------------------------------\n")
+        print(f"Connected to MySQL {self.db_connection.get_server_info()}, database {database}")
 
     def close_connection(self):
-        server_info = self.db_connection.get_server_info()
-        #close the cursor
         self.cursor.close()
-        #close the DB connection
         self.db_connection.close()
-        print("\n-----------------------------------------------")
-        print("Connection to %s is closed" % server_info)
+        print("Database connection closed.")
