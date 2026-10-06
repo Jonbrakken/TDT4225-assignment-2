@@ -25,7 +25,7 @@ class DbConnector:
         except Exception as e:
             print("ERROR: Failed to connect to db:", e)
 
-        # et the db cursor
+        #set the db cursor
         self.cursor = self.db_connection.cursor()
 
         print("Connected to:", self.db_connection.get_server_info())

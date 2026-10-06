@@ -9,7 +9,7 @@ from statistics import median
 from zipfile import ZipFile
 
 
-LIMIT = 0  # Use 0 for all rows, or a smaller number for a quick sample.
+LIMIT = 0  #Use 0 for all rows, or a smaller number for a quick sample.
 
 row_count = 0
 trip_ids = set()
@@ -24,7 +24,7 @@ day_types = Counter()
 blank_origin_calls = Counter()
 blank_origin_stands = Counter()
 
-# Read the CSV directly from the ZIP beside this script.
+#Read the CSV directly from the ZIP beside this script.
 dataset_path = Path(__file__).resolve().parent / "porto.zip"
 
 with ZipFile(dataset_path) as archive:
@@ -83,7 +83,7 @@ print("\nTrajectory sizes:")
 for label, count in trajectory_sizes.items():
     print(f"  {label}: {count:,} ({count / row_count:.2%})")
 
-# The nearest-rank 95th percentile is the value at 95% of the sorted list.
+#The nearest-rank 95th percentile is the value at 95% of the sorted list.
 gps_counts.sort()
 p95_index = math.ceil(0.95 * row_count) - 1
 print("\nGPS points per row:")

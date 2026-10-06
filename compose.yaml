@@ -1,7 +1,7 @@
 services:
   mysql:
     image: mysql:8.4
-    # This local assignment database does not need replication binary logs.
+    #This local assignment database does not need replication binary logs.
     command: ["--skip-log-bin"]
     environment:
       MYSQL_DATABASE: ex2_db

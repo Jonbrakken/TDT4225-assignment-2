@@ -18,7 +18,7 @@ FETCH_SIZE = 1000
 OUTPUT = Path(__file__).resolve().parent / "part2_results" / "results.txt"
 results = {}
 PORTO = ZoneInfo("Europe/Lisbon")
-CITY_HALL = (41.15794, -8.62911)  # Haversine expects (latitude, longitude).
+CITY_HALL = (41.15794, -8.62911)  #Haversine expects (latitude, longitude).
 POLICY = """PART 2 - ANALYSIS RULES
 Counts and call-type frequencies include all stored trips, including short trips.
 Q4a reports all tied most-used call types; NULL call types are excluded.
@@ -55,7 +55,7 @@ def trajectory_metrics(points, missing_data, start_utc):
 
 def passed_city_hall(points):
     for longitude, latitude in points:
-        # A deliberately generous box avoids expensive calculations far away.
+        #A deliberately generous box avoids expensive calculations far away.
         if abs(latitude - CITY_HALL[0]) <= 0.002 and abs(longitude - CITY_HALL[1]) <= 0.002:
             if haversine((latitude, longitude), CITY_HALL, unit=Unit.METERS) <= 100:
                 return True
@@ -182,7 +182,7 @@ def analyse_trajectories(cursor):
             totals["missing"] += bool(missing)
             metrics = trajectory_metrics(points, missing, start_utc)
 
-            # Q10: compare with the immediately previous trip, not an earlier valid one.
+            #Q10: compare with the immediately previous trip, not an earlier valid one.
             if taxi_id == previous_taxi:
                 if previous_end is None:
                     taxi["unknown_gaps"] += 1
@@ -196,7 +196,7 @@ def analyse_trajectories(cursor):
             previous_taxi = taxi_id
             previous_end = metrics[3] if metrics else None
 
-            # Q6: any recorded point can establish proximity, even in an incomplete trip.
+            #Q6: any recorded point can establish proximity, even in an incomplete trip.
             if passed_city_hall(points):
                 totals["q6_city_hall"] += 1
                 matches["q6_city_hall"].append([trip_id, taxi_id, local_start.isoformat(), len(points), bool(missing)])
@@ -218,7 +218,7 @@ def analyse_trajectories(cursor):
         if totals["trips"] % 10000 == 0:
             print(f"Analysed {totals['trips']:,} trips", flush=True)
 
-    # Q4b: show both the all-trip and eligible-trip denominators explicitly.
+    #Q4b: show both the all-trip and eligible-trip denominators explicitly.
     rows = []
     for call_type, data in sorted(calls.items()):
         n = data["eligible"]
@@ -233,7 +233,7 @@ def analyse_trajectories(cursor):
     for name, columns in headers.items():
         save_result(name, columns, matches[name])
 
-    # Q10: save every taxi as well as the requested top 20.
+    #Q10: save every taxi as well as the requested top 20.
     idle = [[tid, d["idle_seconds"]/d["gaps"]/60 if d["gaps"] else None,
              d["gaps"], d["negative_gaps"], d["unknown_gaps"]] for tid, d in taxis.items()]
     idle.sort(key=lambda r: (-(r[1] if r[1] is not None else -1), r[0]))
@@ -243,10 +243,10 @@ def analyse_trajectories(cursor):
     return totals
 
 
-# Run all questions, then write the results only after validation succeeds.
+#Run all questions, then write the results only after validation succeeds.
 connection = DbConnector()
 try:
-    # One consistent read-only snapshot across the SQL and Python calculations.
+    #One consistent read-only snapshot across the SQL and Python calculations.
     connection.db_connection.commit()
     connection.db_connection.start_transaction(isolation_level="REPEATABLE READ", consistent_snapshot=True, readonly=True)
     cursor = connection.cursor
@@ -261,5 +261,5 @@ try:
     write_results()
     print(f"All questions completed. Results saved in {OUTPUT}")
 finally:
-    connection.db_connection.rollback()  # Release the read-only snapshot.
+    connection.db_connection.rollback()  #Release the read-only snapshot.
     connection.close_connection()

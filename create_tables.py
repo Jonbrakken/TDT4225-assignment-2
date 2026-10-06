@@ -9,7 +9,7 @@ try:
     cursor.execute("SHOW TABLES")
     tables = {row[0] for row in cursor.fetchall()}
 
-    # Replace the old schema only when Trip and GPSPoint are empty.
+    #Replace the old schema only when Trip and GPSPoint are empty.
     old_schema = "GPSPoint" in tables
     if "Trip" in tables:
         cursor.execute("SHOW COLUMNS FROM Trip")
@@ -53,8 +53,8 @@ try:
         ) ENGINE=InnoDB
     """)
 
-    # JSON_LENGTH(polyline) gives the number of points, including 0 for [].
-    # Calculate distances and durations in the Part 2 program.
+    #JSON_LENGTH(polyline) gives the number of points, including 0 for [].
+    #Calculate distances and durations in the Part 2 program.
     connection.db_connection.commit()
     cursor.execute("SHOW TABLES")
     print(tabulate(cursor.fetchall(), headers=cursor.column_names))

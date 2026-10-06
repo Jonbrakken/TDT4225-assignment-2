@@ -12,9 +12,9 @@ from zipfile import ZipFile
 from DbConnector import DbConnector
 
 
-LIMIT = 0 # Start with a sample. Set to 0 to import the full dataset.
-BATCH_SIZE = 1000  # Maximum trips per insert/commit; large JSON batches flush sooner.
-INPUT_FILE = "porto.zip"  # Or "porto/porto.csv" if you extract it first.
+LIMIT = 0 #Start with a sample. Set to 0 to import the full dataset.
+BATCH_SIZE = 1000  #Maximum trips per insert/commit; large JSON batches flush sooner.
+INPUT_FILE = "porto.zip"  #Or "porto/porto.csv" if you extract it first.
 folder = Path(__file__).resolve().parent
 
 
@@ -44,7 +44,7 @@ def clean_trip(row):
     if not 0 <= taxi_id <= 9223372036854775807:
         raise ValueError("Taxi ID outside BIGINT range")
 
-    # Unknown optional codes do not discard an otherwise usable trip.
+    #Unknown optional codes do not discard an otherwise usable trip.
     call_type = row["CALL_TYPE"].strip().upper()
     if call_type not in ("A", "B", "C"):
         warnings.append("Unknown call type changed to NULL")
@@ -56,7 +56,7 @@ def clean_trip(row):
 
     origin_call = optional_integer(row["ORIGIN_CALL"], 9223372036854775807, "ORIGIN_CALL", warnings)
     origin_stand = optional_integer(row["ORIGIN_STAND"], 2147483647, "ORIGIN_STAND", warnings)
-    # Keep unexpected populated IDs for inspection rather than silently erasing them.
+    #Keep unexpected populated IDs for inspection rather than silently erasing them.
     if origin_call is not None and call_type != "A":
         warnings.append("ORIGIN_CALL populated for a call type other than A; retained")
     if origin_stand is not None and call_type != "B":
@@ -65,7 +65,7 @@ def clean_trip(row):
     start_time = datetime.fromtimestamp(int(row["TIMESTAMP"]), timezone.utc)
     if start_time.year < 1000:
         raise ValueError("Timestamp outside MySQL DATETIME range")
-    # MySQL DATETIME has no timezone: consistently store the UTC value.
+    #MySQL DATETIME has no timezone: consistently store the UTC value.
     start_time = start_time.replace(tzinfo=None)
 
     missing_text = row["MISSING_DATA"].strip().lower()
