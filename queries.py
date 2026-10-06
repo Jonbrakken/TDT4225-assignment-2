@@ -1,11 +1,10 @@
 """Part 2: SQL summaries and one streamed pass over the stored trajectories.
 
-Run: python queries.py (keep the local MySQL container running).
+Run: python queries.py (keep the SSH tunnel open).
 No database rows are changed. All answers are written to part2_results/results.txt.
 """
 import csv
 import json
-import os
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -16,7 +15,7 @@ from DbConnector import DbConnector
 
 
 FETCH_SIZE = 1000
-OUTPUT = Path(__file__).resolve().parent / os.getenv("RESULTS_FILE", "part2_results/results.txt")
+OUTPUT = Path(__file__).resolve().parent / "part2_results" / "results.txt"
 results = {}
 PORTO = ZoneInfo("Europe/Lisbon")
 CITY_HALL = (41.15794, -8.62911)  # Haversine expects (latitude, longitude).
@@ -83,7 +82,7 @@ def write_results():
         ("q10_all_taxis_idle", "10. Average idle time per taxi"),
         ("q10_top_20_idle", "10. Top 20 taxis by average idle time"),
     ]
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    OUTPUT.parent.mkdir(exist_ok=True)
     with OUTPUT.open("w", encoding="utf-8", newline="") as file:
         file.write(POLICY + "\n")
         writer = csv.writer(file, delimiter="\t", lineterminator="\n")

@@ -1,4 +1,3 @@
-import argparse
 import csv
 import io
 import json
@@ -13,18 +12,10 @@ from zipfile import ZipFile
 from DbConnector import DbConnector
 
 
-parser = argparse.ArgumentParser(description="Import Porto trips into local MySQL.")
-parser.add_argument("--input", default="data/train.csv", help="CSV or ZIP path, relative to this project")
-parser.add_argument("--limit", type=int, default=0, help="Maximum source rows; 0 imports all rows")
-args = parser.parse_args()
-if args.limit < 0:
-    parser.error("--limit must be 0 or greater")
-LIMIT = args.limit
+LIMIT = 0 # Start with a sample. Set to 0 to import the full dataset.
 BATCH_SIZE = 1000  # Maximum trips per insert/commit; large JSON batches flush sooner.
-INPUT_FILE = args.input
+INPUT_FILE = "porto.zip"  # Or "porto/porto.csv" if you extract it first.
 folder = Path(__file__).resolve().parent
-if not (folder / INPUT_FILE).is_file():
-    parser.error(f"Input file not found: {folder / INPUT_FILE}")
 
 
 def optional_integer(value, maximum, field, warnings):
