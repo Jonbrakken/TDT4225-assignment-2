@@ -1,1 +1,9 @@
-halla boys
+## Docker
+The database was made locally using docker
+
+Be sure to run the files in this order: 
+- eda.py
+- create_tables.py
+- import_data.py
+- queries.py
+
