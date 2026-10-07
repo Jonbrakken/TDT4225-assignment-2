@@ -10,12 +10,17 @@ from pathlib import Path
 from zipfile import ZipFile
 
 from DbConnector import DbConnector
+from trajectory_utils import excessive_speed, MAX_SPEED_KMH
 
 
 LIMIT = 0 #Start with a sample. Set to 0 to import the full dataset.
 BATCH_SIZE = 1000  #Maximum trips per insert/commit; large JSON batches flush sooner.
 INPUT_FILE = "porto.zip"  #Or "porto/porto.csv" if you extract it first.
 folder = Path(__file__).resolve().parent
+
+
+class ExcessiveSpeedError(ValueError):
+    """A trajectory contains a segment above the import speed limit."""
 
 
 def optional_integer(value, maximum, field, warnings):
@@ -49,10 +54,6 @@ def clean_trip(row):
     if call_type not in ("A", "B", "C"):
         warnings.append("Unknown call type changed to NULL")
         call_type = None
-    day_type = row.get("DAY_TYPE", row.get("DAYTYPE", "")).strip().upper()
-    if day_type not in ("A", "B", "C"):
-        warnings.append("Unknown day type changed to NULL")
-        day_type = None
 
     origin_call = optional_integer(row["ORIGIN_CALL"], 9223372036854775807, "ORIGIN_CALL", warnings)
     origin_stand = optional_integer(row["ORIGIN_STAND"], 2147483647, "ORIGIN_STAND", warnings)
@@ -85,12 +86,19 @@ def clean_trip(row):
         if not -180 <= longitude <= 180 or not -90 <= latitude <= 90:
             raise ValueError("GPS coordinate outside valid range")
 
-    # Preserve every point in its original order, including repeated coordinates.
-    # Empty and short trajectories and MISSING_DATA=True trips are all retained.
+    violation = excessive_speed(points)
+    if violation is not None:
+        segment, speed = violation
+        raise ExcessiveSpeedError(
+            f"Segment {segment}: {speed:.2f} km/h exceeds {MAX_SPEED_KMH} km/h"
+        )
+
+    #Preserve every point in its original order, including repeated coordinates.
+    #Empty and short trajectories and MISSING_DATA=True trips are all retained.
     polyline = json.dumps(points, separators=(",", ":"), allow_nan=False)
     values = (
         trip_id, taxi_id, call_type, origin_call, origin_stand,
-        start_time, day_type, missing_data, polyline,
+        start_time, missing_data, polyline,
     )
     return values, len(points), warnings
 
@@ -110,8 +118,6 @@ def csv_rows():
                     "TIMESTAMP", "MISSING_DATA", "POLYLINE"}
         if not required.issubset(reader.fieldnames or []):
             raise ValueError("CSV is missing required columns")
-        if not {"DAY_TYPE", "DAYTYPE"}.intersection(reader.fieldnames):
-            raise ValueError("CSV is missing its day-type column")
         rows = islice(reader, LIMIT) if LIMIT else reader
         for row in rows:
             yield reader.line_num, row
@@ -128,18 +134,18 @@ def commit_changes():
             [(taxi_id,) for taxi_id in new_taxis],
         )
     if inserts:
-        # Connector/Python combines these rows into one multi-row INSERT.
+        #Connector/Python combines these rows into one multi-row INSERT.
         cursor.executemany(
             """INSERT INTO Trip
                (trip_id, taxi_id, call_type, origin_call, origin_stand,
-                start_time, day_type, missing_data, polyline)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""", inserts,
+                start_time, missing_data, polyline)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""", inserts,
         )
-    # Only conflicting IDs need updates, so keep this small loop straightforward.
+    #Only conflicting IDs need updates, so keep this small loop straightforward.
     for values in updates:
         cursor.execute(
             """UPDATE Trip SET taxi_id=%s, call_type=%s, origin_call=%s,
-               origin_stand=%s, start_time=%s, day_type=%s,
+               origin_stand=%s, start_time=%s,
                missing_data=%s, polyline=%s WHERE trip_id=%s""",
             values[1:] + (values[0],),
         )
@@ -165,7 +171,7 @@ def save_trip(values, check_existing=False):
             return
         cursor.execute(
             """SELECT trip_id, taxi_id, call_type, origin_call, origin_stand,
-               start_time, day_type, missing_data, polyline FROM Trip WHERE trip_id=%s""",
+               start_time, missing_data, polyline FROM Trip WHERE trip_id=%s""",
             (trip_id,),
         )
         stored = cursor.fetchone()
@@ -178,7 +184,7 @@ def save_trip(values, check_existing=False):
                       json.dumps(dict(zip(cursor.column_names, stored)), default=str)])
         action = "Trips updated"
 
-    # Allow for SQL quoting/escaping as well as JSON size. Leave packet headroom.
+    #Allow for SQL quoting/escaping as well as JSON size. Leave packet headroom.
     row_bytes = 1024 + 2 * sum(len(str(value).encode("utf-8")) for value in values)
     if row_bytes > packet_limit:
         raise ValueError(f"Trip {trip_id} exceeds the conservative packet limit; "
@@ -210,7 +216,7 @@ try:
     if "polyline" not in {row[0] for row in cursor.fetchall()}:
         raise RuntimeError("Run create_tables.py to set up the JSON schema first.")
 
-    # 1. Find repeated IDs. Only their records need to be kept in memory.
+    #1. Find repeated IDs. Only their records need to be kept in memory.
     cursor.execute("SELECT @@max_allowed_packet")
     packet_limit = int(cursor.fetchone()[0]) // 2
     batch_byte_limit = min(1024 * 1024, packet_limit)
@@ -230,7 +236,7 @@ try:
         log = csv.writer(log_file)
         log.writerow(["csv_line", "trip_id", "action", "reason", "original_row_json"])
 
-        # 2. Clean each row. Import unique IDs and set duplicate groups aside.
+        #2. Clean each row. Import unique IDs and set duplicate groups aside.
         for line, row in csv_rows():
             counts["Rows read"] += 1
             trip_id = (row.get("TRIP_ID") or "").strip()
@@ -238,6 +244,10 @@ try:
                 if None in row or any(value is None for value in row.values()):
                     raise ValueError("CSV row has missing or extra fields")
                 values, point_count, warnings = clean_trip(row)
+            except ExcessiveSpeedError as error:
+                counts["Speed rows rejected"] += 1
+                log.writerow([line, trip_id, "rejected: excessive speed", str(error), json.dumps(row)])
+                continue
             except (ValueError, TypeError, OverflowError, OSError) as error:
                 counts["Malformed rows rejected"] += 1
                 log.writerow([line, trip_id, "rejected", str(error), json.dumps(row)])
@@ -253,7 +263,7 @@ try:
             else:
                 save_trip(values)
 
-        # 3. For repeated IDs, choose the most points. Keep the first on a tie.
+        #3. For repeated IDs, choose the most points. Keep the first on a tie.
         for trip_id, records in duplicates.items():
             if not records:  # All occurrences failed validation.
                 continue
@@ -279,7 +289,7 @@ try:
                           f"with {best['points']} points. First wins ties.")
                 log.writerow([record["line"], trip_id, action, reason, json.dumps(original)])
 
-            # Also correct records saved by an earlier import using the old rule.
+            #Also correct records saved by an earlier import using the old rule.
             save_trip(best["values"], check_existing=True)
         if inserts or updates:
             commit_changes()
@@ -293,7 +303,7 @@ finally:
     summary = f"\nIMPORT SUMMARY — {status}\nRun: {run_id}\nLimit: {LIMIT or 'full dataset'}\n"
     for label in ("Rows read", "Trips inserted", "Trips updated", "Existing trips unchanged",
                   "Repeated ID groups", "Exact duplicate rows", "Conflicting rows",
-                  "Groups choosing a later row", "Malformed rows rejected", "Source rows with warnings"):
+                  "Groups choosing a later row", "Speed rows rejected", "Malformed rows rejected", "Source rows with warnings"):
         summary += f"{label}: {counts[label]:,}\n"
     summary += f"Issue log: {log_path.name}\n"
     print(summary)
