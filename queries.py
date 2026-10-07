@@ -33,8 +33,8 @@ Duration = (point_count - 1) * 15 seconds; route distance sums GPS segments.
 Q6 tests any recorded point within 100 m, including short/incomplete trips.
 No interpolation is performed; missing points can hide proximity to City Hall.
 Q8 requires the end date to be exactly the next Porto local calendar date.
-Q9 compares recorded endpoints for all trips with at least 2 points, including
-incomplete trips. These are recorded endpoints, not guaranteed actual endpoints.
+Q9 compares recorded endpoints only for complete trajectories with at least 3 points.
+These are recorded endpoints, not guaranteed actual endpoints.
 Q6 and Q9 thresholds are inclusive (<=100 m and <=50 m respectively).
 Q10 orders ALL trips by UTC start time, then trip ID, within each taxi.
 An unknown previous end excludes that gap; intervening trips are never bridged.
@@ -233,14 +233,14 @@ def question_8(cursor, results):
 
 
 def question_9(cursor, results):
-    """Fetch only recorded endpoints and test their distance in Python."""
+    """Compare endpoints of complete trajectories containing at least three points."""
     print("Running q9_circular_trips...", flush=True)
     rows = []
     for trip_id, taxi_id, count, missing, first, last in query_rows(cursor, """
         SELECT trip_id, taxi_id, JSON_LENGTH(polyline) AS point_count, missing_data,
                JSON_EXTRACT(polyline, '$[0]') AS first_point,
                JSON_EXTRACT(polyline, CONCAT('$[', JSON_LENGTH(polyline) - 1, ']')) AS last_point
-        FROM Trip WHERE JSON_LENGTH(polyline) >= 2
+        FROM Trip WHERE NOT missing_data AND JSON_LENGTH(polyline) >= 3
         ORDER BY taxi_id, start_time, trip_id
     """):
         endpoint_m = distance_m(json.loads(first), json.loads(last))
